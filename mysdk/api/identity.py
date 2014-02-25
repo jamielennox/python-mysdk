@@ -233,6 +233,56 @@ class UserManager(ProxyManager):
     resource = User
 
 
+class Project(Resource):
+
+    def __init__(self, id, name, description=None, domain_id=None,
+                 enabled=True, **kwargs):
+        super(Project, self).__init__(self, **kwargs)
+
+        self.id = id
+        self.name = name
+        self.domain_id = domain_id
+        self.enabled = enabled
+
+    @classmethod
+    def create(cls, obj, **kwargs):
+        if isinstance(obj, v2tenants.Tenant):
+            domain_id = None
+        elif isinstance(obj, v3projects.Project):
+            domain_id = obj.domain_id
+        else:
+            return super(Project, cls).create(obj, **kwargs)
+
+        return cls(obj.id,
+                   obj.name,
+                   description=obj.description,
+                   domain_id=domain_id,
+                   enabled=obj.enabled,
+                   **kwargs)
+
+    def render(self, obj):
+        project = {}
+
+        if isinstance(obj, v2tenants.TenantManager):
+            if self.domain_id:
+                raise InvalidVersion()
+        elif isinstance(obj, v3projects.ProjectManager):
+            project['domain_id'] = obj.domain_id
+        else:
+            return super(Project, self).render(obj)
+
+        project['id'] = self.id
+        project['name'] = self.name
+        project['email'] = self.email
+        project['enabled'] = self.enabled
+
+        return project
+
+
+class ProjectManager(ProxyManager):
+    resource = Project
+
+
 class IdentityClient(object):
 
     def __init__(self, session):
@@ -240,10 +290,16 @@ class IdentityClient(object):
                                 version=(3, 0),
                                 endpoint_type='public'):
             client = V3IdentityClient(session)
+
+            self.projects = ProjectManager(client.projects)
+
         elif session.get_endpoint(service_type='identity',
                                   version=(2, 0),
                                   endpoint_type='admin'):
             client = V2IdentityClient(session)
+
+            self.projects = ProjectManager(client.tenants)
+
         else:
             raise Exception('No valid clients')
 
@@ -252,20 +308,32 @@ class IdentityClient(object):
 
 
 if __name__ == '__main__':
-    from keystoneclient.auth.identity import v2
     from keystoneclient import session
 
     logging.basicConfig(level=logging.DEBUG)
 
+    from keystoneclient.auth.identity import v2
     auth = v2.Password(auth_url='http://localhost:5000/v2.0',
-                       username='jamie', password='jamie', tenant_name='demo')
+                       username='jamie', password='jamie',
+                       tenant_name='demo')
+
+    # from keystoneclient.auth.identity import v3
+    # auth = v3.Password(auth_url='http://localhost:5000/v3',
+    #                    username='jamie', password='jamie',
+    #                    user_domain_id='default',
+    #                    project_domain_id='default', project_name='demo')
+
     sess = session.Session(auth)
 
     ident = IdentityClient(sess)
 
-    users = ident.users.list()
-    for user in users:
-        print "User", user
+    projects = ident.projects.list()
+    for project in projects:
+        print "Project", project.id, project.name
+
+    # users = ident.users.list()
+    # for user in users:
+    #     print "User", user
 
     # roles = ident.roles.list()
     # for role in roles:
