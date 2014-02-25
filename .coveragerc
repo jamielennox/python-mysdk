@@ -1,0 +1,7 @@
+[run]
+branch = True
+source = mysdk
+omit = mysdk/tests/*,mysdk/openstack/*
+
+[report]
+ignore-errors = True
